@@ -1,0 +1,88 @@
+name: Prebuilt libraries
+
+on:
+  push:
+    tags: ['static-v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            triplet: x64-linux
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            triplet: arm64-linux
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            triplet: arm64-osx
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            triplet: x64-windows-static-md
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y nasm ninja-build pkg-config
+      - if: runner.os == 'macOS'
+        run: brew install nasm ninja pkg-config
+      - run: |
+          git clone https://github.com/microsoft/vcpkg
+          git -C vcpkg checkout "$(cat prebuilt/vcpkg.commit)"
+      - if: runner.os == 'Windows'
+        run: cmd //c 'vcpkg\bootstrap-vcpkg.bat -disableMetrics'
+      - if: runner.os != 'Windows'
+        run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+      # hevc and the other default features pull in x265, which is GPL
+      - run: ./vcpkg/vcpkg install "libheif[core,libde265,dav1d]:${{ matrix.triplet }}" --overlay-triplets=prebuilt/triplets
+      - name: Package
+        run: |
+          root="libheif-prebuilt-${{ matrix.target }}"
+          mkdir -p "dist/$root/installed"
+          cp -R "vcpkg/installed/${{ matrix.triplet }}" "dist/$root/installed/"
+          cp -R vcpkg/installed/vcpkg "dist/$root/installed/"
+          touch "dist/$root/.vcpkg-root"
+          cp prebuilt/vcpkg.commit prebuilt/README.md "dist/$root/"
+          cp -R prebuilt/licenses "dist/$root/"
+          find "dist/$root/installed/${{ matrix.triplet }}/lib" -maxdepth 1 -type f | sort
+          tar -C dist -czf "dist/$root.tar.gz" "$root"
+      # LGPL recipients are owed the corresponding source, so it ships with the binaries
+      - if: matrix.target == 'x86_64-unknown-linux-gnu'
+        name: Package sources
+        run: |
+          root=libheif-prebuilt-sources
+          mkdir -p "dist/$root/ports" "dist/$root/downloads"
+          cp -R vcpkg/ports/libheif vcpkg/ports/libde265 "dist/$root/ports/"
+          cp vcpkg/downloads/*libheif* vcpkg/downloads/*libde265* "dist/$root/downloads/"
+          cp prebuilt/vcpkg.commit prebuilt/README.md "dist/$root/"
+          cp -R prebuilt/licenses "dist/$root/"
+          ls -l "dist/$root/downloads"
+          test "$(ls "dist/$root/downloads" | grep -c libheif)" -ge 1
+          test "$(ls "dist/$root/downloads" | grep -c libde265)" -ge 1
+          tar -C dist -czf "dist/$root.tar.gz" "$root"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - run: (cd dist && sha256sum *.tar.gz > SHA256SUMS)
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes "libheif, libde265 and dav1d static libraries."
