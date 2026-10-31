@@ -1,6 +1,11 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "prebuilt")]
+#[path = "prebuilt/link.rs"]
+mod prebuilt;
+
+#[allow(unreachable_code)]
 fn main() {
     if std::env::var("DOCS_RS").is_ok() {
         // Don't link with libheif in case of building documentation for docs.rs.
@@ -9,6 +14,9 @@ fn main() {
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=wrapper.h");
+
+    #[cfg(feature = "prebuilt")]
+    return prebuilt::link();
 
     // https://github.com/Cykooz/libheif-sys/issues/14
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();

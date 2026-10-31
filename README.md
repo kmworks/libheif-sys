@@ -4,6 +4,8 @@
 [![crates.io](https://img.shields.io/crates/v/libheif-sys?logo=rust)](https://crates.io/crates/libheif-sys)
 [![docs.rs](https://img.shields.io/docsrs/libheif-sys?logo=docs.rs&color=66c2a5)](https://docs.rs/libheif-sys)
 
+> This is the [kmrs](https://github.com/kmworks/kmrs) fork of [Cykooz/libheif-sys](https://github.com/Cykooz/libheif-sys). It adds a `prebuilt` feature that links static libraries without needing `pkg-config`, vcpkg or a system libheif; see [prebuilt/README.md](prebuilt/README.md). The `vendor/libheif` submodule is removed, because Cargo clones submodules of git dependencies, so `embedded-libheif` does not work here.
+
 `libheif-sys` is a binding to [libheif](https://github.com/strukturag/libheif).
 
 A high-level wrapper [libheif-rs](https://github.com/Cykooz/libheif-rs) is also
